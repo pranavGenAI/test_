@@ -1,28 +1,51 @@
-from transformers import AutoProcessor, PaliGemmaForConditionalGeneration
+import fitz  # PyMuPDF
+import pytesseract
+from pdf2image import convert_from_path
 from PIL import Image
-import requests
-import torch
+import io
 import streamlit as st
 
-model_id = "google/paligemma-3b-mix-224"
+# Path to your PDF file
+pdf_path = 'XYZ Consulting_withimage.pdf'
 
-url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/transformers/tasks/car.jpg?download=true"
-image = Image.open(requests.get(url, stream=True).raw)
+# Function to extract text from images
+def ocr_image(image):
+    text = pytesseract.image_to_string(image)
+    return text
 
-model = PaliGemmaForConditionalGeneration.from_pretrained(model_id).eval()
-processor = AutoProcessor.from_pretrained(model_id)
+# Initialize text storage variable
+text_ = ""
 
-# Instruct the model to create a caption in Spanish
-prompt = "caption es"
-model_inputs = processor(text=prompt, images=image, return_tensors="pt")
-input_len = model_inputs["input_ids"].shape[-1]
+# Open the PDF file
+pdf_document = fitz.open(pdf_path)
 
-with torch.inference_mode():
-    generation = model.generate(**model_inputs, max_new_tokens=100, do_sample=False)
-    generation = generation[0][input_len:]
-    decoded = processor.decode(generation, skip_special_tokens=True)
-    print(decoded)
+# Loop through each page
+for page_num in range(len(pdf_document)):
+    # Get the page
+    page = pdf_document.load_page(page_num)
+    
+    # Extract text directly from the page
+    text_ += page.get_text()
+    
+    # Extract images from the page
+    images = page.get_images(full=True)
+    
+    for img_index, img in enumerate(images):
+        xref = img[0]
+        base_image = pdf_document.extract_image(xref)
+        image_bytes = base_image["image"]
+        image_ext = base_image["ext"]
+        
+        # Open the image with PIL
+        image = Image.open(io.BytesIO(image_bytes))
+        
+        # Perform OCR on the image
+        text_ += ocr_image(image)
 
+# Close the PDF document
+pdf_document.close()
 
+# Print or use the extracted text stored in text_
+print(text_)
 
-st.write(decoded)
+st.write(text_)
